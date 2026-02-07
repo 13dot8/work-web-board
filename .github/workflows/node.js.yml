@@ -38,7 +38,6 @@ jobs:
     # 运行测试 (可选)
     # - name: Run tests
     #   run: npm test --if-present
-
     # 上传构建产物到 Artifacts (用于后续步骤使用)
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
@@ -59,9 +58,8 @@ jobs:
         with:
           name: dist-output
           path: ./dist
-
        # 关键步骤：先创建文件夹，再上传
-      - name: Deploy to server
+      - name: Check file
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -71,7 +69,7 @@ jobs:
             # 第一步：创建目录（如果不存在）
             mkdir -p /root/nginx-proxy/www/work-web-board
             # 第二步：清理旧的 dist 文件夹（可选）
-            rm -rf /root/nginx-proxy/www/work-web-board/dist
+            rm -rf /root/nginx-proxy/www/work-web-board
             # 第三步：准备接收新文件
             echo "✅ Directory ready for deployment"
             
@@ -86,7 +84,7 @@ jobs:
           # 上传 dist/ 文件夹到服务器
           scp -r -o StrictHostKeyChecking=no \
             -i ~/.ssh/deploy_key \
-            ./dist/ \
+            ./dist/* \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/root/nginx-proxy/www/work-web-board/
 
       # # 关键步骤 3：在服务器上执行重启命令 nginx会自动生效
