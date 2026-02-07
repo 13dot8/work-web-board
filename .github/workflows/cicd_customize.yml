@@ -1,0 +1,94 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: CI/CD-Customize
+
+on:
+  workflow_dispatch
+
+jobs:
+  # 在 GitHub Actions 上构建
+  build:
+    runs-on: ubuntu-latest
+    # if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    # strategy:
+    #   matrix:
+    #     node-version: [18.15.0]
+    #     # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+    
+    steps:
+    # 检出代码
+    - uses: actions/checkout@v4
+    # 设置 Node.js 环境
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'  # 根据你的项目选择版本，[18.15.0,xxxx]
+        cache: 'npm'  # 缓存 npm 依赖，加速构建
+    # 安装依赖
+    - run: npm ci
+    # 构建项目
+    - run: npm run build
+    # 运行测试 (可选)
+    # - name: Run tests
+    #   run: npm test --if-present
+    # 上传构建产物到 Artifacts (用于后续步骤使用)
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-output
+        path: dist/  # 根据你的项目修改这个路径
+        retention-days: 7  # 只保留 1 天
+
+  # 下载 Artifacts 并部署到服务器
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # 关键步骤 1：下载构建产物
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-output
+          path: ./dist
+       # 关键步骤：先创建文件夹，再上传
+      - name: Check file
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # 第一步：创建目录（如果不存在）
+            mkdir -p /root/nginx-proxy/www/work-web-board
+            # 第二步：清理旧的 dist 文件夹（可选）
+            rm -rf /root/nginx-proxy/www/work-web-board
+            # 第三步：准备接收新文件
+            echo "✅ Directory ready for deployment"
+            
+      # 关键步骤 2：通过 SCP 上传 dist/ 到服务器
+      - name: Upload dist folder to server
+        run: |
+          # 创建 SSH 密钥文件
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          
+          # 上传 dist/ 文件夹到服务器
+          scp -r -o StrictHostKeyChecking=no \
+            -i ~/.ssh/deploy_key \
+            ./dist/* \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/root/nginx-proxy/www/work-web-board/
+
+      # # 关键步骤 3：在服务器上执行重启命令 nginx会自动生效
+      # - name: Restart application on server
+      #   uses: appleboy/ssh-action@master
+      #   with:
+      #     host: ${{ secrets.SERVER_HOST }}
+      #     username: ${{ secrets.SERVER_USER }}
+      #     key: ${{ secrets.SERVER_SSH_KEY }}
+      #     script: |
+      #       cd /opt/my-app
+      #       pm2 restart my-app-name
+      #       # 或者：pm2 reload my-app-name (优雅重启)
